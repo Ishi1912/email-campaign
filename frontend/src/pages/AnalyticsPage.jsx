@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Sparkles, Wand2 } from "lucide-react";
+import { Sparkles, Wand2, BarChart3 } from "lucide-react";
 import {
   ResponsiveContainer,
   BarChart,
@@ -17,13 +17,25 @@ import { Card, PageLoader, EmptyState } from "../components/ui/primitives";
 import Button from "../components/ui/Button";
 import { subscriberApi, campaignApi, aiApi } from "../api/client";
 import { useToast } from "../context/ToastContext";
-import { BarChart3 } from "lucide-react";
 
-const SUB_COLORS = { active: "#34D399", unsubscribed: "#9C9BC0", bounced: "#FF6859" };
-const CAMPAIGN_COLORS = { draft: "#9C9BC0", scheduled: "#F5B84E", sending: "#5AA9FF", sent: "#34D399" };
+const SUB_COLORS = {
+  active: "#34D399",
+  unsubscribed: "#9C9BC0",
+  bounced: "#FF6859",
+};
+
+const CAMPAIGN_COLORS = {
+  draft: "#9C9BC0",
+  scheduled: "#F5B84E",
+  sending: "#5AA9FF",
+  sent: "#34D399",
+  failed: "#FF6859",
+  cancelled: "#A78BFA",
+};
 
 function ChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
+
   return (
     <div className="rounded-lg border border-ink-500 bg-ink-800 px-3 py-2 text-xs shadow-card">
       <p className="text-mist-400 mb-0.5">{label}</p>
@@ -34,6 +46,7 @@ function ChartTooltip({ active, payload, label }) {
 
 export default function AnalyticsPage() {
   const toast = useToast();
+
   const [subscribers, setSubscribers] = useState([]);
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -43,16 +56,24 @@ export default function AnalyticsPage() {
   useEffect(() => {
     (async () => {
       setLoading(true);
+
       try {
-        const [subsRes, campsRes] = await Promise.all([subscriberApi.list(), campaignApi.list()]);
+        const [subsRes, campsRes] = await Promise.all([
+          subscriberApi.list(),
+          campaignApi.list(),
+        ]);
+
         setSubscribers(subsRes.data.data || []);
         setCampaigns(campsRes.data.data || []);
       } catch (err) {
-        toast.error(err.response?.data?.message || "Couldn't load analytics.");
+        toast.error(
+          err.response?.data?.message || "Couldn't load analytics."
+        );
       } finally {
         setLoading(false);
       }
     })();
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -67,7 +88,14 @@ export default function AnalyticsPage() {
 
   const campaignBreakdown = useMemo(
     () =>
-      ["draft", "scheduled", "sending", "sent"].map((status) => ({
+      [
+        "draft",
+        "scheduled",
+        "sending",
+        "sent",
+        "failed",
+        "cancelled",
+      ].map((status) => ({
         status,
         count: campaigns.filter((c) => c.status === status).length,
       })),
@@ -75,12 +103,26 @@ export default function AnalyticsPage() {
   );
 
   const sendTimeline = useMemo(() => {
-    const sent = campaigns.filter((c) => c.sentAt).sort((a, b) => new Date(a.sentAt) - new Date(b.sentAt));
+    const sent = campaigns
+      .filter((c) => c.sentAt)
+      .sort(
+        (a, b) =>
+          new Date(a.sentAt) - new Date(b.sentAt)
+      );
+
     let running = 0;
+
     return sent.map((c) => {
       running += 1;
+
       return {
-        date: new Date(c.sentAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+        date: new Date(c.sentAt).toLocaleDateString(
+          undefined,
+          {
+            month: "short",
+            day: "numeric",
+          }
+        ),
         total: running,
       };
     });
@@ -88,22 +130,93 @@ export default function AnalyticsPage() {
 
   async function handleGenerateInsights() {
     setGenerating(true);
+
     try {
-      const active = subscribers.filter((s) => s.status === "active").length;
-      const bounced = subscribers.filter((s) => s.status === "bounced").length;
-      const unsub = subscribers.filter((s) => s.status === "unsubscribed").length;
-      const sent = campaigns.filter((c) => c.status === "sent").length;
-      const draft = campaigns.filter((c) => c.status === "draft").length;
+      const active = subscribers.filter(
+        (s) => s.status === "active"
+      ).length;
 
-      const prompt = `Act as an email marketing analyst. Here is my account's current data:
-- Total subscribers: ${subscribers.length} (active: ${active}, unsubscribed: ${unsub}, bounced: ${bounced})
-- Total campaigns: ${campaigns.length} (sent: ${sent}, draft: ${draft})
+      const bounced = subscribers.filter(
+        (s) => s.status === "bounced"
+      ).length;
 
-Write a short performance summary and 3-4 concrete, specific recommendations for improving
-list health and campaign output going forward. Format your response as the body of a short
-internal memo, not a sales email. Do not use placeholders.`;
+      const unsub = subscribers.filter(
+        (s) => s.status === "unsubscribed"
+      ).length;
+
+      const sent = campaigns.filter(
+        (c) => c.status === "sent"
+      ).length;
+
+      const draft = campaigns.filter(
+        (c) => c.status === "draft"
+      ).length;
+
+      const scheduled = campaigns.filter(
+        (c) => c.status === "scheduled"
+      ).length;
+
+      const sending = campaigns.filter(
+        (c) => c.status === "sending"
+      ).length;
+
+      const failed = campaigns.filter(
+        (c) => c.status === "failed"
+      ).length;
+
+      const cancelled = campaigns.filter(
+        (c) => c.status === "cancelled"
+      ).length;
+
+      const prompt = `Act as a simple email marketing assistant.
+
+Here is my account's current data:
+
+- Total subscribers: ${subscribers.length}
+- Active subscribers: ${active}
+- Unsubscribed subscribers: ${unsub}
+- Bounced subscribers: ${bounced}
+
+- Total campaigns: ${campaigns.length}
+- Draft campaigns: ${draft}
+- Scheduled campaigns: ${scheduled}
+- Sending campaigns: ${sending}
+- Sent campaigns: ${sent}
+- Failed campaigns: ${failed}
+- Cancelled campaigns: ${cancelled}
+
+Give me:
+
+1. A short performance summary in 2-3 simple sentences.
+2. 3-4 practical recommendations based only on the data above.
+
+Use simple, easy-to-understand English.
+
+Do not use complicated marketing terms such as "lead acquisition",
+"deployment audits", "engagement thresholds", "distribution schedule",
+or "operational priorities".
+
+Do not assume that an active subscriber is engaged with emails.
+Only make conclusions that are supported by the provided data.
+
+Consider failed and cancelled campaigns when evaluating campaign performance.
+
+Format the response exactly like this:
+
+Performance Summary:
+[2-3 simple sentences]
+
+Recommendations:
+1. [recommendation]
+2. [recommendation]
+3. [recommendation]
+4. [recommendation]
+
+Do not write "Hello Team", "Dear Team", "Please review",
+or mention meetings or team syncs.`;
 
       const { data } = await aiApi.generate(prompt);
+
       setInsights(data.data);
     } catch (err) {
       toast.error(
@@ -124,46 +237,151 @@ internal memo, not a sales email. Do not use placeholders.`;
   }
 
   return (
-    <AppLayout title="Analytics" subtitle="What's actually tracked by the server, plus an AI-written summary.">
+    <AppLayout
+      title="Analytics"
+      subtitle="What's actually tracked by the server, plus an AI-written summary."
+    >
+      {/* Charts */}
       <div className="grid gap-5 lg:grid-cols-2 mb-6">
+
+        {/* Subscribers by status */}
         <Card className="p-6">
-          <h3 className="font-display font-semibold text-mist-100 mb-1">Subscribers by status</h3>
-          <p className="text-sm text-mist-400 mb-4">{subscribers.length} total</p>
+          <h3 className="font-display font-semibold text-mist-100 mb-1">
+            Subscribers by status
+          </h3>
+
+          <p className="text-sm text-mist-400 mb-4">
+            {subscribers.length} total
+          </p>
+
           {subscribers.length === 0 ? (
-            <EmptyState icon={BarChart3} title="No data yet" description="Add subscribers to see this chart." />
+            <EmptyState
+              icon={BarChart3}
+              title="No data yet"
+              description="Add subscribers to see this chart."
+            />
           ) : (
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={subscriberBreakdown} barSize={48}>
-                <CartesianGrid vertical={false} stroke="#212446" />
-                <XAxis dataKey="status" stroke="#9C9BC0" fontSize={12} tickLine={false} axisLine={false} className="capitalize" />
-                <YAxis stroke="#9C9BC0" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
-                <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(140,107,255,0.06)" }} />
-                <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                  {subscriberBreakdown.map((entry) => (
-                    <Cell key={entry.status} fill={SUB_COLORS[entry.status]} />
-                  ))}
+              <BarChart
+                data={subscriberBreakdown}
+                barSize={48}
+              >
+                <CartesianGrid
+                  vertical={false}
+                  stroke="#212446"
+                />
+
+                <XAxis
+                  dataKey="status"
+                  stroke="#9C9BC0"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  className="capitalize"
+                />
+
+                <YAxis
+                  stroke="#9C9BC0"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  allowDecimals={false}
+                />
+
+                <Tooltip
+                  content={<ChartTooltip />}
+                  cursor={{
+                    fill: "rgba(140,107,255,0.06)",
+                  }}
+                />
+
+                <Bar
+                  dataKey="count"
+                  radius={[6, 6, 0, 0]}
+                >
+                  {subscriberBreakdown.map(
+                    (entry) => (
+                      <Cell
+                        key={entry.status}
+                        fill={
+                          SUB_COLORS[entry.status]
+                        }
+                      />
+                    )
+                  )}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           )}
         </Card>
 
+        {/* Campaigns by status */}
         <Card className="p-6">
-          <h3 className="font-display font-semibold text-mist-100 mb-1">Campaigns by status</h3>
-          <p className="text-sm text-mist-400 mb-4">{campaigns.length} total</p>
+          <h3 className="font-display font-semibold text-mist-100 mb-1">
+            Campaigns by status
+          </h3>
+
+          <p className="text-sm text-mist-400 mb-4">
+            {campaigns.length} total
+          </p>
+
           {campaigns.length === 0 ? (
-            <EmptyState icon={BarChart3} title="No data yet" description="Create campaigns to see this chart." />
+            <EmptyState
+              icon={BarChart3}
+              title="No data yet"
+              description="Create campaigns to see this chart."
+            />
           ) : (
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={campaignBreakdown} barSize={48}>
-                <CartesianGrid vertical={false} stroke="#212446" />
-                <XAxis dataKey="status" stroke="#9C9BC0" fontSize={12} tickLine={false} axisLine={false} className="capitalize" />
-                <YAxis stroke="#9C9BC0" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
-                <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(140,107,255,0.06)" }} />
-                <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                  {campaignBreakdown.map((entry) => (
-                    <Cell key={entry.status} fill={CAMPAIGN_COLORS[entry.status]} />
-                  ))}
+              <BarChart
+                data={campaignBreakdown}
+                barSize={40}
+              >
+                <CartesianGrid
+                  vertical={false}
+                  stroke="#212446"
+                />
+
+                <XAxis
+                  dataKey="status"
+                  stroke="#9C9BC0"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  className="capitalize"
+                />
+
+                <YAxis
+                  stroke="#9C9BC0"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  allowDecimals={false}
+                />
+
+                <Tooltip
+                  content={<ChartTooltip />}
+                  cursor={{
+                    fill: "rgba(140,107,255,0.06)",
+                  }}
+                />
+
+                <Bar
+                  dataKey="count"
+                  radius={[6, 6, 0, 0]}
+                >
+                  {campaignBreakdown.map(
+                    (entry) => (
+                      <Cell
+                        key={entry.status}
+                        fill={
+                          CAMPAIGN_COLORS[
+                            entry.status
+                          ]
+                        }
+                      />
+                    )
+                  )}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -171,47 +389,112 @@ internal memo, not a sales email. Do not use placeholders.`;
         </Card>
       </div>
 
+      {/* Campaign timeline */}
       <Card className="p-6 mb-6">
-        <h3 className="font-display font-semibold text-mist-100 mb-1">Campaigns sent over time</h3>
-        <p className="text-sm text-mist-400 mb-4">Cumulative count of sent campaigns.</p>
+        <h3 className="font-display font-semibold text-mist-100 mb-1">
+          Campaigns sent over time
+        </h3>
+
+        <p className="text-sm text-mist-400 mb-4">
+          Cumulative count of sent campaigns.
+        </p>
+
         {sendTimeline.length === 0 ? (
-          <EmptyState icon={BarChart3} title="Nothing sent yet" description="Send a campaign to start this timeline." />
+          <EmptyState
+            icon={BarChart3}
+            title="Nothing sent yet"
+            description="Send a campaign to start this timeline."
+          />
         ) : (
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={sendTimeline}>
-              <CartesianGrid vertical={false} stroke="#212446" />
-              <XAxis dataKey="date" stroke="#9C9BC0" fontSize={12} tickLine={false} axisLine={false} />
-              <YAxis stroke="#9C9BC0" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
-              <Tooltip content={<ChartTooltip />} />
-              <Line type="monotone" dataKey="total" stroke="#8C6BFF" strokeWidth={2.5} dot={{ r: 3, fill: "#8C6BFF" }} />
+              <CartesianGrid
+                vertical={false}
+                stroke="#212446"
+              />
+
+              <XAxis
+                dataKey="date"
+                stroke="#9C9BC0"
+                fontSize={12}
+                tickLine={false}
+                axisLine={false}
+              />
+
+              <YAxis
+                stroke="#9C9BC0"
+                fontSize={12}
+                tickLine={false}
+                axisLine={false}
+                allowDecimals={false}
+              />
+
+              <Tooltip
+                content={<ChartTooltip />}
+              />
+
+              <Line
+                type="monotone"
+                dataKey="total"
+                stroke="#8C6BFF"
+                strokeWidth={2.5}
+                dot={{
+                  r: 3,
+                  fill: "#8C6BFF",
+                }}
+              />
             </LineChart>
           </ResponsiveContainer>
         )}
       </Card>
 
+      {/* AI insights */}
       <Card className="p-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
+
           <div className="flex items-center gap-2">
-            <Sparkles size={16} className="text-signal-violet" />
-            <h3 className="font-display font-semibold text-mist-100">AI insights</h3>
+            <Sparkles
+              size={16}
+              className="text-signal-violet"
+            />
+
+            <h3 className="font-display font-semibold text-mist-100">
+              AI insights
+            </h3>
           </div>
-          <Button size="sm" variant="secondary" icon={Wand2} loading={generating} onClick={handleGenerateInsights}
-            className="border-signal-violet/30 text-signal-violet hover:bg-signal-violet/10">
+
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={Wand2}
+            loading={generating}
+            onClick={handleGenerateInsights}
+            className="border-signal-violet/30 text-signal-violet hover:bg-signal-violet/10"
+          >
             Generate insights
           </Button>
         </div>
 
         {insights ? (
           <div className="mt-4 rounded-xl border border-signal-violet/20 bg-signal-violet/[0.05] p-5">
+
             {insights.subject && (
-              <p className="text-sm font-semibold text-mist-100 mb-2">{insights.subject}</p>
+              <p className="text-sm font-semibold text-mist-100 mb-2">
+                {insights.subject}
+              </p>
             )}
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-mist-100/90">{insights.content}</p>
+
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-mist-100/90">
+              {insights.content}
+            </p>
+
           </div>
         ) : (
           <p className="mt-3 text-sm text-mist-400 leading-relaxed">
-            Generate a written summary and recommendations based on your current subscriber and campaign
-            counts, using the same AI endpoint that powers campaign drafting.
+            Generate a written summary and recommendations
+            based on your current subscriber and campaign
+            counts, using the same AI endpoint that powers
+            campaign drafting.
           </p>
         )}
       </Card>

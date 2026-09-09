@@ -59,6 +59,15 @@ export const campaignApi = {
   update: (id, payload) => client.put(`/campaign/${id}`, payload),
   remove: (id) => client.delete(`/campaign/${id}`),
   send: (id) => client.post(`/campaign/${id}/send`),
+
+  schedule: (id, scheduledAt) =>
+    client.post(`/campaign/${id}/schedule`, { scheduledAt }),
+
+  reschedule: (id, scheduledAt) =>
+    client.post(`/campaign/${id}/reschedule`, { scheduledAt }),
+
+  cancelSchedule: (id) =>
+    client.post(`/campaign/${id}/cancel`),
 };
 
 // ---- AI (backed by /api/ai/generate -> { subject, content }) ----
