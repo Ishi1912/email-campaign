@@ -73,6 +73,12 @@ export const campaignApi = {
 // ---- AI (backed by /api/ai/generate -> { subject, content }) ----
 export const aiApi = {
   generate: (prompt) => client.post("/ai/generate", { prompt }),
+
+  checkSpamRisk: (subject, content) =>
+    client.post("/ai/spam-check", {
+      subject,
+      content,
+    }),
 };
 
 export default client;
